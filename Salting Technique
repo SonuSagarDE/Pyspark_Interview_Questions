@@ -1,0 +1,47 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import concat, lit, rand
+
+# Initialize Spark session
+spark = SparkSession.builder \
+    .appName("Salting Technique Example") \
+    .getOrCreate()
+
+# Sample data (replace this with your actual DataFrame)
+data = [("Alice", 28),
+        ("Bob", 25),
+        ("Charlie", 31),
+        ("David", 22),
+        ("Eva", 26),
+        ("Frank", 29),
+        ("Grace", 27),
+        ("Henry", 30),
+        ("Ivy", 23),
+        ("Jack", 24)]
+
+# Create a DataFrame
+columns = ["Name", "Age"]
+df = spark.createDataFrame(data, columns)
+
+# Define the number of partitions you want to use
+num_partitions = 4
+
+# Generate a random salt column for each row
+df_with_salt = df.withColumn("salt", (rand() * num_partitions).cast("int"))
+
+# Calculate the partition ID by adding salt to the row number
+df_with_partition_id = df_with_salt.withColumn("partition_id", (df_with_salt["salt"] + (lit(1) % num_partitions)))
+
+# Concatenate salt and name to create a new key column
+df_with_partition_key = df_with_partition_id.withColumn("partition_key", concat(df_with_partition_id["Name"], lit("_"), df_with_partition_id["salt"]))
+
+# Drop the temporary columns
+df_partitioned = df_with_partition_key.drop("salt", "partition_id")
+
+# Repartition the DataFrame based on the partition key
+df_final = df_partitioned.repartition(num_partitions, "partition_key").drop("partition_key")
+
+# Show the final DataFrame with even partitions
+df_final.show()
+
+# Stop the Spark session
+spark.stop()
